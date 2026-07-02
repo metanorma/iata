@@ -1,0 +1,33 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  SuggestExtensions: false
+
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*.rb'
+    - 'iata.gemspec'
+
+Metrics/AbcSize:
+  Exclude:
+    - 'lib/iata/coordinates.rb'
+    - 'lib/iata/loader.rb'
+    - 'lib/iata/data/fetcher.rb'
+
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'lib/iata/loader.rb'
+    - 'lib/iata/data/fetcher.rb'
+
+Metrics/MethodLength:
+  Exclude:
+    - 'lib/iata/data/fetcher.rb'
+
+Metrics/ClassLength:
+  Max: 120
+
+Style/Documentation:
+  Enabled: false
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes

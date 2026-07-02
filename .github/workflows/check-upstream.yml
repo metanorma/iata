@@ -1,0 +1,111 @@
+name: check-upstream
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      upstream_count: ${{ steps.count.outputs.count }}
+      bundled_count: ${{ steps.bundled.outputs.count }}
+      bundled_fetched: ${{ steps.bundled.outputs.fetched }}
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Query Wikidata for current IATA airport count
+        id: count
+        run: |
+          # SPARQL query that returns just the count of airports with P238.
+          QUERY=$(cat <<'EOF'
+          SELECT (COUNT(?airport) AS ?count) WHERE {
+            ?airport wdt:P238 ?iata .
+          }
+          EOF
+          )
+          RESPONSE=$(curl -fsSL \
+            --user-agent 'metanorma-iata-gem/check-upstream' \
+            -H 'Accept: application/sparql-results+json' \
+            -G 'https://query.wikidata.org/sparql' \
+            --data-urlencode "query=$QUERY")
+          COUNT=$(echo "$RESPONSE" | jq -r '.results.bindings[0].count.value')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Upstream IATA airport count: $COUNT"
+
+      - name: Bundled entry count + fetched_at
+        id: bundled
+        run: |
+          FETCHED=$(jq -r '._meta.fetched_at // "unknown"' lib/iata/data/airports.json)
+          COUNT=$(jq -r '._meta.entry_count // 0' lib/iata/data/airports.json)
+          echo "fetched=$FETCHED" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Bundled count: $COUNT (fetched $FETCHED)"
+
+      - name: Compare
+        id: compare
+        run: |
+          if [ "${{ steps.count.outputs.count }}" = "${{ steps.bundled.outputs.count }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Up to date (${{ steps.bundled.outputs.count }} entries)"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Drift detected: bundled ${{ steps.bundled.outputs.count }} vs upstream ${{ steps.count.outputs.count }}"
+          fi
+
+      - name: Skip duplicate issue
+        id: existing
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="data-update: Wikidata IATA count ${{ steps.count.outputs.count }} (bundled: ${{ steps.bundled.outputs.count }})"
+          EXISTING=$(gh issue list --label data-update --search "$TITLE" --state open --json number --jq 'length')
+          echo "existing=$EXISTING" >> "$GITHUB_OUTPUT"
+          if [ "$EXISTING" != "0" ]; then
+            echo "Open issue already exists; skipping create."
+          fi
+
+      - name: Open issue
+        if: steps.compare.outputs.changed == 'true' && steps.existing.outputs.existing == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="wikidata-${{ steps.count.outputs.count }}-vs-${{ steps.bundled.outputs.count }}"
+          cat > /tmp/issue-body.md <<'BODY'
+          The IATA airport count on Wikidata has drifted from the bundled dataset.
+
+          | | Count |
+          |---|---|
+          | **Bundled** | ${{ steps.bundled.outputs.count }} |
+          | **Upstream** | ${{ steps.count.outputs.count }} |
+
+          Note: count differences don't guarantee the bundled data is stale (the change may be a renamed/merged entity, not a new airport), but they warrant a refresh.
+
+          ## To refresh
+
+          1. Run the **update-data** workflow (no inputs needed) — it re-queries Wikidata and writes `lib/iata/data/airports.json`.
+          2. Review and merge the PR it opens.
+          3. Trigger the **release** workflow with `next_version=patch` to publish a new gem version.
+          BODY
+
+          sed -i "s|\${{ steps.bundled.outputs.count }}|${{ steps.bundled.outputs.count }}|g" /tmp/issue-body.md
+          sed -i "s|\${{ steps.count.outputs.count }}|${{ steps.count.outputs.count }}|g" /tmp/issue-body.md
+
+          REPO="$GITHUB_REPOSITORY"
+          DISPATCH_URL="https://github.com/$REPO/actions/workflows/update-data.yml"
+          cat >> /tmp/issue-body.md <<EOF
+
+          [**Run update-data workflow**]($DISPATCH_URL)
+          EOF
+
+          gh issue create \
+            --title "data-update: Wikidata IATA count ${{ steps.count.outputs.count }} (bundled: ${{ steps.bundled.outputs.count }})" \
+            --body-file /tmp/issue-body.md \
+            --label data-update

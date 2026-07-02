@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "fetched_at": "2026-07-02T00:00:00Z",
+    "source": "Wikidata (property P238)",
+    "result_count": 4,
+    "entry_count": 4
+  },
+  "PVG": {
+    "code": "PVG",
+    "name": "Shanghai Pudong International Airport",
+    "wikidata_id": "Q86792",
+    "country_iso2": "CN",
+    "country_name": "Q148",
+    "latitude": 31.1434,
+    "longitude": 121.8052
+  },
+  "HKG": {
+    "code": "HKG",
+    "name": "Hong Kong International Airport",
+    "wikidata_id": "Q10216",
+    "country_iso2": "HK",
+    "country_name": "Q8646",
+    "latitude": 22.3089,
+    "longitude": 113.9145
+  },
+  "JFK": {
+    "code": "JFK",
+    "name": "John F. Kennedy International Airport",
+    "wikidata_id": "Q34332",
+    "country_iso2": "US",
+    "country_name": "Q30",
+    "latitude": 40.6413,
+    "longitude": -73.7781
+  },
+  "NRT": {
+    "code": "NRT",
+    "name": "Narita International Airport",
+    "wikidata_id": "Q106235",
+    "country_iso2": "JP",
+    "country_name": "Q17",
+    "latitude": 35.7720,
+    "longitude": 140.3929
+  }
+}

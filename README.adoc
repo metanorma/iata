@@ -1,0 +1,142 @@
+= iata
+:toc: macro
+:homepage: https://github.com/metanorma/iata
+
+`iata` is a Ruby gem that exposes the IATA (International Air Transport
+Association) airport code list as a queryable in-memory registry.
+
+The dataset is sourced from Wikidata (property P238, "IATA airport code") and
+ships inside the gem as a JSON file so the registry works offline. Loading is
+lazy — the first call to `Iata.registry` parses the bundled JSON once.
+
+== Installation
+
+Ruby 3.1 or newer is required.
+
+Add to your Gemfile:
+
+[source,ruby]
+----
+gem 'iata'
+----
+
+Or install directly:
+
+[source,sh]
+----
+gem install iata
+----
+
+== Usage
+
+[source,ruby]
+----
+require 'iata'
+
+# Lookup by 3-letter IATA code (case-insensitive)
+Iata.find('PVG').name          # => "Shanghai Pudong International Airport"
+Iata['HKG']                   # => #<Iata::Entry code="HKG" name="Hong Kong International Airport">
+
+# Filters — single value or array (any-of)
+Iata.where(country: 'CN').count       # => ~200 Chinese airports
+Iata.where(country: %w[CN HK]).count  # => airports in China or Hong Kong
+
+# Search by name (Regexp substring or case-insensitive String)
+Iata.where(name: /international/i).count
+Iata.where(name: 'narita').map(&:code)   # => ["NRT"]
+
+# Country listing
+Iata.countries                # => ["AE", "AR", "AT", ..., "ZW"] (200+ codes)
+Iata.counts_by_country.first(5)
+----
+
+=== What's in an Entry
+
+Each `Iata::Entry` exposes the fields the JSON-LD wire format populates:
+
+[cols="1,2", options="header"]
+|===
+|Attribute|Description
+|`code`|3-letter IATA airport code
+|`name`|English-language name
+|`wikidata_id`|Wikidata entity ID (Q-number) for cross-referencing
+|`country_iso2`|ISO 3166-1 alpha-2 country code
+|`country_name`|Display name for the country (from Wikidata)
+|`latitude`, `longitude`|WGS-84 decimal degrees
+|===
+
+[source,ruby]
+----
+entry = Iata.find('PVG')
+
+entry.country          # => "CN"
+entry.country_name     # => "China"
+entry.coordinates      # => #<Iata::Coordinates lat=31.1434 lon=121.8052>
+entry.coordinates.distance_to(Iata.find('HKG').coordinates)  # => ~1255 km
+----
+
+== Data refresh
+
+Wikidata updates daily; new airports are added as they receive IATA codes.
+
+The gem ships two workflows to keep the bundled data fresh:
+
+=== `check-upstream` (scheduled, weekly)
+
+`.github/workflows/check-upstream.yml` runs every Monday and queries
+Wikidata for the current IATA airport count. If it differs from the bundled
+count, the workflow opens a `data-update` issue with a refresh link.
+
+=== `update-data` (manual dispatch)
+
+`.github/workflows/update-data.yml` is what a maintainer runs after the
+weekly check flags drift. It re-queries Wikidata, commits the refreshed
+`lib/iata/data/airports.json` to a branch, and opens a PR. Merging the PR
+does not, by itself, publish a new gem — to ship a new version, trigger
+the `release` workflow with `next_version=patch`.
+
+End-to-end refresh flow:
+
+. `check-upstream` opens issue: "Wikidata IATA count N (bundled: M)"
+. Maintainer runs `update-data` workflow
+. Workflow opens PR with refreshed `airports.json`
+. Maintainer merges the PR
+. Maintainer triggers `release` workflow with `next_version=patch`
+
+Manual local equivalent:
+
+[source,sh]
+----
+bundle exec rake iata:fetch         # refresh bundled airports.json
+----
+
+== Cross-referencing with Wikidata
+
+Each `Entry` carries its Wikidata Q-number so you can link out to the
+authoritative record:
+
+[source,ruby]
+----
+entry = Iata.find('PVG')
+entry.wikidata_id                       # => "Q86792"
+# https://www.wikidata.org/wiki/Q86792
+----
+
+== Development
+
+[source,sh]
+----
+bundle install                       # install dev deps
+bundle exec rake                     # spec + rubocop
+bundle exec rake iata:fetch          # refresh bundled dataset
+----
+
+== Data attribution
+
+Bundled data is sourced from Wikidata (CC0). The IATA organisation does not
+publish its code list under an open license; the Wikidata community
+maintains IATA airport codes as structured data derived from public sources.
+
+== License
+
+BSD-2-Clause. See link:LICENSE[].
